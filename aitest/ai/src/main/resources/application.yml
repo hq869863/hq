@@ -1,0 +1,77 @@
+server:
+  port: 8001
+spring:
+  application:
+    name: ai
+  data:
+    redis:
+      host: redis
+      port: 6379
+      password: 123456
+  ai:
+    vectorstore:
+      redis:
+        uri: redis://default:123456@redis:6379
+        # 向量索引的名称
+        index-name: local-docs-index
+        # Redis 中存储向量数据的 Key 前缀
+        prefix: "doc:"
+    dashscope:
+      api-key: "sk-ws-H.ELPPPRD.RHOG.MEYCIQDhHMQVJ1vyhDjpovXpBx6YdTckJbhLxC27pniUxYX-WwIhAOQUBeAV_YA_MUjjqzLkT0dgmaEo8weonqzwfQaPCOL4"
+      chat:
+        options:
+          model: qwen-plus
+      # 向量模型
+      embedding:
+        options:
+          model: text-embedding-v1
+    memory:
+      redis:
+        host: redis
+        port: 6379
+        password: 123456
+
+#    mcp:
+#      client:
+#        enabled: true
+#        name: saa-mcp-client
+#        toolcallback:
+#          enabled: true
+#        type: async
+#        request-timeout: 80s
+#        stdio:
+#          servers-configuration: classpath:/baidumcp.json5
+#        streamable-http:
+#          connections:
+#            baidu-maps:
+##              url: 'https://mcp.api-inference.modelscope.net/b740726ebbee49/mcp'
+#              url: 'https://mcp.map.baidu.com/sse?ak=87fbWzD4RNkTPtJTIqmtUGSHhEJ5QB9d'
+#              endpoint: mcp
+
+
+
+app:
+  ai:
+    # 默认系统提示词（可根据不同环境修改）
+    default-system-prompt: "你是专业助手，必要时请调用工具"
+
+
+    # 聊天记忆滑动窗口大小
+    max-messages: 10
+    baidu-map-url: 'https://mcp.map.baidu.com/mcp?ak=87fbWzD4RNkTPtJTIqmtUGSHhEJ5QB9d'
+baidu:
+  map:
+    ak: "87fbWzD4RNkTPtJTIqmtUGSHhEJ5QB9d"
+logging:
+  level:
+    org.springframework.ai: DEBUG
+    com.alibaba.cloud.ai: DEBUG
+    com.alibaba.dashscope: DEBUG
+    # 1. 开启 Spring AI MCP 客户端的底层调试日志，查看连接和通信细节
+    io.modelcontextprotocol.client: DEBUG
+
+    # 2. 开启 Spring AI MCP 框架的自动配置和工具注册日志
+    org.springframework.ai.mcp: DEBUG
+
+    # 3. (可选) 开启 Spring AI 聊天客户端的日志，查看工具调用过程
+    org.springframework.ai.chat.client.advisor: DEBUG
