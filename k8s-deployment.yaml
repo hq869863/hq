@@ -1,10 +1,74 @@
-# ==========================================
-# 1. Redis 缓存服务
-# ==========================================
+# AI 模块部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai
+  template:
+    metadata:
+      labels:
+        app: ai
+    spec:
+      containers:
+      - name: ai
+        image: crpi-uc092ktu9mbv7t37.cn-shenzhen.personal.cr.aliyuncs.com/hq869863/hq:ai-1.0.0
+        ports:
+        - containerPort: 8001
+---
+# Business 模块部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: business-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: business
+  template:
+    metadata:
+      labels:
+        app: business
+    spec:
+      containers:
+      - name: business
+        image: crpi-uc092ktu9mbv7t37.cn-shenzhen.personal.cr.aliyuncs.com/hq869863/hq:business-1.0.0
+        ports:
+        - containerPort: 8000
+---
+# RAG 模块部署
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag
+  template:
+    metadata:
+      labels:
+        app: rag
+    spec:
+      containers:
+      - name: rag
+        image: crpi-uc092ktu9mbv7t37.cn-shenzhen.personal.cr.aliyuncs.com/hq869863/hq:rag-1.0.0
+        ports:
+        - containerPort: 8009
+
+---
+# redis 模块部署
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis-deployment
+  labels:
+    app: redis
 spec:
   replicas: 1
   selector:
@@ -17,12 +81,28 @@ spec:
     spec:
       containers:
       - name: redis
-        # 👇 1. 更新为阿里云的完整镜像地址
-        image: crpi-uc092ktu9mbv7t37.cn-shenzhen.personal.cr.aliyuncs.com/hq869863/hq:redis-8
-        # 👇 2. 确保策略为 Always
-        imagePullPolicy: Always 
-        command: ["redis-server", "--requirepass", "123456"]
+        image: registry.cn-hangzhou.aliyuncs.com/library/redis:8
         ports:
         - containerPort: 6379
-    imagePullSecrets:
-    - name: aliyun-registry-secret
+        command: ["redis-server", "--requirepass", "123456"]
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+      nodePort: 30379
+  type: NodePort
