@@ -24,3 +24,5 @@ spec:
         command: ["redis-server", "--requirepass", "123456"]
         ports:
         - containerPort: 6379
+    imagePullSecrets:
+    - name: aliyun-registry-secret
