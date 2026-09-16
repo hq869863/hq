@@ -26,12 +26,12 @@ public class ChatController {
      * 对话接口（透传给 ai 模块）
      */
     @PostMapping(value = "/graph/{chatId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<String>> chatFlux(@RequestBody String userInput, @PathVariable("chatId") String chatId) {
+    public String chatFlux(@RequestBody String userInput, @PathVariable("chatId") String chatId) {
         return aiWebClient.post()
                 .uri("/graph/{chatId}", chatId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(userInput)
                 .retrieve()
-                .bodyToFlux(new ParameterizedTypeReference<ServerSentEvent<String>>() {});
+                .toString();
     }
 }
