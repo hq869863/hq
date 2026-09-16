@@ -14,12 +14,33 @@
             justify-content: center;
             align-items: center;
         }
-        /* 聊天主容器 */
+        /* 登录面板样式 */
+        .login-panel {
+            width: 100%; max-width: 360px; padding: 32px;
+            background: #fff; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            display: flex; flex-direction: column; gap: 16px;
+        }
+        .login-panel h2 { text-align: center; color: #333; margin-bottom: 8px; }
+        .login-panel input {
+            padding: 12px; border: 1px solid #ddd; border-radius: 8px;
+            font-size: 14px; outline: none; transition: border-color 0.3s;
+        }
+        .login-panel input:focus { border-color: #007bff; }
+        .login-panel button {
+            padding: 12px; font-size: 14px; background-color: #007bff; color: #fff;
+            border: none; border-radius: 8px; cursor: pointer; transition: background 0.3s;
+        }
+        .login-panel button:hover:not(:disabled) { background-color: #0056b3; }
+        .login-panel button:disabled { background-color: #ccc; cursor: not-allowed; }
+        .login-error { color: #c62828; font-size: 12px; text-align: center; display: none; }
+
+        /* 聊天主容器（默认隐藏） */
         .chat-container {
             width: 100%; max-width: 800px; height: 90vh;
             background: #fff; border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            display: flex; flex-direction: column; overflow: hidden;
+            display: none; flex-direction: column; overflow: hidden;
         }
         /* 头部 */
         .chat-header {
@@ -27,13 +48,12 @@
             border-bottom: 1px solid #eee; font-size: 18px; font-weight: bold; color: #333;
             display: flex; justify-content: space-between; align-items: center;
         }
-        .header-status {
-            font-size: 12px; font-weight: normal; padding: 4px 10px;
-            border-radius: 12px;
+        .header-info { font-size: 12px; color: #666; }
+        .logout-btn {
+            font-size: 12px; color: #007bff; cursor: pointer; margin-left: 12px;
         }
-        .header-status.login { background: #e8f5e9; color: #2e7d32; }
-        .header-status.waiting { background: #fff3e0; color: #e65100; }
-        .header-status.error { background: #ffebee; color: #c62828; }
+        .logout-btn:hover { text-decoration: underline; }
+
         /* 消息展示区 */
         #messages {
             flex: 1; padding: 20px; overflow-y: auto;
@@ -65,22 +85,34 @@
             resize: none; outline: none; transition: border-color 0.3s;
         }
         #messageInput:focus { border-color: #007bff; }
-        button {
+        #sendBtn {
             padding: 0 24px; font-size: 14px; background-color: #007bff; color: #fff;
             border: none; border-radius: 8px; cursor: pointer; transition: background 0.3s;
         }
-        button:hover:not(:disabled) { background-color: #0056b3; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        #sendBtn:hover:not(:disabled) { background-color: #0056b3; }
+        #sendBtn:disabled { background-color: #ccc; cursor: not-allowed; }
     </style>
 </head>
 <body>
-<div class="chat-container">
+
+<!-- 登录面板 -->
+<div class="login-panel" id="loginPanel">
+    <h2>AI 智能助手</h2>
+    <input type="text" id="usernameInput" placeholder="请输入用户名" />
+    <button id="loginBtn" onclick="doLogin()">登 录</button>
+    <div class="login-error" id="loginError"></div>
+</div>
+
+<!-- 聊天主容器 -->
+<div class="chat-container" id="chatContainer">
     <div class="chat-header">
         <span>AI 智能助手</span>
-        <span id="loginStatus" class="header-status waiting">登录中...</span>
+        <div>
+            <span class="header-info" id="userInfo"></span>
+            <span class="logout-btn" onclick="doLogout()">退出登录</span>
+        </div>
     </div>
     <div id="messages">
-        <!-- 默认欢迎消息 -->
         <div class="msg-wrapper ai">
             <div class="msg-role">AI 助手</div>
             <div class="msg-content">你好！我是你的智能助手，请问有什么可以帮您？</div>
@@ -88,88 +120,104 @@
     </div>
     <div class="input-area">
         <textarea id="messageInput" rows="2" placeholder="输入你的问题..."></textarea>
-        <button id="sendBtn" onclick="sendMsg()" disabled>发送</button>
+        <button id="sendBtn" onclick="sendMsg()">发送</button>
     </div>
 </div>
 
 <script>
-    // ⚠️ 核心配置：登录接口地址（根据你的后端实际地址修改）
+    // ⚠️ 核心配置：根据你的后端实际地址修改
     const LOGIN_URL = "/login";
-    // ⚠️ 聊天接口基础路径
-    const CHAT_BASE_URL = "/graph";
+    const CHAT_URL = "/graph/default"; // 这里假设 chatId 传 "default"，或者你可以根据用户动态生成
 
-    let chatId = null;       // 登录后获取的 token，作为 chatId
-    let currentEventSource = null;
+    let currentToken = null;   // 存储登录后的 token
+    let isStreaming = false;   // 是否正在流式输出中
 
-    // ===================== 页面加载时自动登录 =====================
-    window.addEventListener('DOMContentLoaded', async () => {
-        const statusEl = document.getElementById('loginStatus');
-        const sendBtn = document.getElementById('sendBtn');
+    // ===================== 登录逻辑 =====================
+    function doLogin() {
+        const username = document.getElementById('usernameInput').value.trim();
+        const loginBtn = document.getElementById('loginBtn');
+        const loginError = document.getElementById('loginError');
 
-        try {
-            const res = await fetch(LOGIN_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                // ⚠️ 根据你的登录接口要求，修改这里的请求体
-                body: JSON.stringify({
-                    username: "test",
-                    password: "123456"
-                })
-            });
-
-            if (!res.ok) {
-                throw new Error(`登录失败，状态码: ${res.status}`);
-            }
-
-            const data = await res.json();
-
-            // ⚠️ 根据你的登录接口返回结构，修改这里的取值字段
-            // 常见返回结构：{ token: "xxx" } 或 { data: { token: "xxx" } } 或 { satoken: "xxx" }
-            chatId = data.token || data.satoken || data.data?.token || data.access_token;
-
-            if (!chatId) {
-                throw new Error("登录成功但未获取到 token，请检查返回数据结构");
-            }
-
-            // 登录成功，更新 UI
-            statusEl.textContent = "已登录";
-            statusEl.className = "header-status login";
-            sendBtn.disabled = false;
-
-            console.log("✅ 自动登录成功，chatId =", chatId);
-        } catch (err) {
-            console.error("❌ 自动登录失败:", err);
-            statusEl.textContent = "登录失败";
-            statusEl.className = "header-status error";
-            appendMessage('ai', '系统', '自动登录失败，请检查后端接口是否可用。错误: ' + err.message);
+        if (!username) {
+            loginError.textContent = "请输入用户名";
+            loginError.style.display = "block";
+            return;
         }
-    });
 
-    // ===================== 发送消息 =====================
+        loginBtn.disabled = true;
+        loginBtn.textContent = "登录中...";
+        loginError.style.display = "none";
+
+        // 调用后端 GET /login?user=xxx
+        fetch(`${LOGIN_URL}?user=${encodeURIComponent(username)}`, { method: 'GET' })
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                // 根据你的后端返回结构：{ message: "登录成功", token: "xxx" }
+                if (data && data.token) {
+                    currentToken = data.token;
+                    // 切换 UI 到聊天界面
+                    document.getElementById('loginPanel').style.display = 'none';
+                    document.getElementById('chatContainer').style.display = 'flex';
+                    document.getElementById('userInfo').textContent = `用户: ${username}`;
+                    console.log("✅ 登录成功，Token:", currentToken);
+                } else {
+                    throw new Error("未获取到 Token");
+                }
+            })
+            .catch(err => {
+                console.error("❌ 登录失败:", err);
+                loginError.textContent = "登录失败: " + err.message;
+                loginError.style.display = "block";
+            })
+            .finally(() => {
+                loginBtn.disabled = false;
+                loginBtn.textContent = "登 录";
+            });
+    }
+
+    // 退出登录
+    function doLogout() {
+        currentToken = null;
+        document.getElementById('chatContainer').style.display = 'none';
+        document.getElementById('loginPanel').style.display = 'flex';
+        document.getElementById('usernameInput').value = '';
+        document.getElementById('messages').innerHTML = `
+            <div class="msg-wrapper ai">
+                <div class="msg-role">AI 助手</div>
+                <div class="msg-content">你好！我是你的智能助手，请问有什么可以帮您？</div>
+            </div>
+        `;
+    }
+
+    // ===================== 发送消息逻辑 =====================
     function sendMsg() {
         const input = document.getElementById('messageInput');
         const btn = document.getElementById('sendBtn');
         const message = input.value.trim();
 
-        if (!message || !chatId || currentEventSource) return;
+        if (!message || !currentToken || isStreaming) return;
 
         // 1. 渲染用户消息
         appendMessage('user', '我', message);
         input.value = '';
         btn.disabled = true;
+        isStreaming = true;
 
         // 2. 渲染 AI 消息占位符（带闪烁光标）
         const aiContentDiv = appendMessage('ai', 'AI 助手', '');
         aiContentDiv.classList.add('typing-cursor');
 
-        // 3. 构建 SSE 请求 URL，将 token 作为 chatId 拼在路径中
-        const url = `${CHAT_BASE_URL}/${encodeURIComponent(chatId)}`;
-
-        // 4. 使用 fetch + ReadableStream 实现 POST + SSE
-        fetch(url, {
+        // 3. 构建 POST 请求，将 Token 放在请求头中
+        fetch(CHAT_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: message   // 直接发送用户输入的文本
+            headers: {
+                'Content-Type': 'application/json',
+                'satoken': currentToken   // ⚠️ Sa-Token 默认从请求头 satoken 中读取
+            },
+            body: message   // 直接发送用户输入的文本字符串
         })
             .then(response => {
                 if (!response.ok) {
@@ -184,7 +232,7 @@
                         if (done) {
                             aiContentDiv.classList.remove('typing-cursor');
                             btn.disabled = false;
-                            currentEventSource = null;
+                            isStreaming = false;
                             return;
                         }
                         buffer += decoder.decode(value, { stream: true });
@@ -215,7 +263,7 @@
                 aiContentDiv.classList.remove('typing-cursor');
                 aiContentDiv.innerHTML += `<br><span style="color:red;">[请求失败: ${err.message}]</span>`;
                 btn.disabled = false;
-                currentEventSource = null;
+                isStreaming = false;
             });
     }
 
@@ -241,6 +289,13 @@
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMsg();
+        }
+    });
+
+    // 支持在登录输入框按回车登录
+    document.getElementById('usernameInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            doLogin();
         }
     });
 </script>
