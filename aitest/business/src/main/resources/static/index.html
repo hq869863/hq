@@ -25,7 +25,15 @@
         .chat-header {
             padding: 16px 24px; background: #fff;
             border-bottom: 1px solid #eee; font-size: 18px; font-weight: bold; color: #333;
+            display: flex; justify-content: space-between; align-items: center;
         }
+        .header-status {
+            font-size: 12px; font-weight: normal; padding: 4px 10px;
+            border-radius: 12px;
+        }
+        .header-status.login { background: #e8f5e9; color: #2e7d32; }
+        .header-status.waiting { background: #fff3e0; color: #e65100; }
+        .header-status.error { background: #ffebee; color: #c62828; }
         /* 消息展示区 */
         #messages {
             flex: 1; padding: 20px; overflow-y: auto;
@@ -67,7 +75,10 @@
 </head>
 <body>
 <div class="chat-container">
-    <div class="chat-header">AI 智能助手</div>
+    <div class="chat-header">
+        <span>AI 智能助手</span>
+        <span id="loginStatus" class="header-status waiting">登录中...</span>
+    </div>
     <div id="messages">
         <!-- 默认欢迎消息 -->
         <div class="msg-wrapper ai">
@@ -77,21 +88,70 @@
     </div>
     <div class="input-area">
         <textarea id="messageInput" rows="2" placeholder="输入你的问题..."></textarea>
-        <button id="sendBtn" onclick="sendMsg()">发送</button>
+        <button id="sendBtn" onclick="sendMsg()" disabled>发送</button>
     </div>
 </div>
 
 <script>
-    // ⚠️ 核心配置：填入你登录成功后获取的 Token
-    const SA_TOKEN = "你的Sa-Token值";
+    // ⚠️ 核心配置：登录接口地址（根据你的后端实际地址修改）
+    const LOGIN_URL = "/login";
+    // ⚠️ 聊天接口基础路径
+    const CHAT_BASE_URL = "/graph";
+
+    let chatId = null;       // 登录后获取的 token，作为 chatId
     let currentEventSource = null;
 
+    // ===================== 页面加载时自动登录 =====================
+    window.addEventListener('DOMContentLoaded', async () => {
+        const statusEl = document.getElementById('loginStatus');
+        const sendBtn = document.getElementById('sendBtn');
+
+        try {
+            const res = await fetch(LOGIN_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                // ⚠️ 根据你的登录接口要求，修改这里的请求体
+                body: JSON.stringify({
+                    username: "test",
+                    password: "123456"
+                })
+            });
+
+            if (!res.ok) {
+                throw new Error(`登录失败，状态码: ${res.status}`);
+            }
+
+            const data = await res.json();
+
+            // ⚠️ 根据你的登录接口返回结构，修改这里的取值字段
+            // 常见返回结构：{ token: "xxx" } 或 { data: { token: "xxx" } } 或 { satoken: "xxx" }
+            chatId = data.token || data.satoken || data.data?.token || data.access_token;
+
+            if (!chatId) {
+                throw new Error("登录成功但未获取到 token，请检查返回数据结构");
+            }
+
+            // 登录成功，更新 UI
+            statusEl.textContent = "已登录";
+            statusEl.className = "header-status login";
+            sendBtn.disabled = false;
+
+            console.log("✅ 自动登录成功，chatId =", chatId);
+        } catch (err) {
+            console.error("❌ 自动登录失败:", err);
+            statusEl.textContent = "登录失败";
+            statusEl.className = "header-status error";
+            appendMessage('ai', '系统', '自动登录失败，请检查后端接口是否可用。错误: ' + err.message);
+        }
+    });
+
+    // ===================== 发送消息 =====================
     function sendMsg() {
         const input = document.getElementById('messageInput');
         const btn = document.getElementById('sendBtn');
         const message = input.value.trim();
 
-        if (!message || currentEventSource) return;
+        if (!message || !chatId || currentEventSource) return;
 
         // 1. 渲染用户消息
         appendMessage('user', '我', message);
@@ -102,24 +162,61 @@
         const aiContentDiv = appendMessage('ai', 'AI 助手', '');
         aiContentDiv.classList.add('typing-cursor');
 
-        // 3. 构建带 Token 的 SSE 请求 URL
-        const url = `/chat?msg=${encodeURIComponent(message)}&satoken=${SA_TOKEN}`;
-        currentEventSource = new EventSource(url);
+        // 3. 构建 SSE 请求 URL，将 token 作为 chatId 拼在路径中
+        const url = `${CHAT_BASE_URL}/${encodeURIComponent(chatId)}`;
 
-        // 4. 监听流式数据
-        currentEventSource.onmessage = function (event) {
-            const data = event.data;
-            aiContentDiv.innerHTML += data.replace(/\n/g, '<br>');
-            scrollToBottom();
-        };
+        // 4. 使用 fetch + ReadableStream 实现 POST + SSE
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: message   // 直接发送用户输入的文本
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`请求失败，状态码: ${response.status}`);
+                }
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
 
-        // 5. 监听结束/错误
-        currentEventSource.onerror = function () {
-            currentEventSource.close();
-            currentEventSource = null;
-            btn.disabled = false;
-            aiContentDiv.classList.remove('typing-cursor'); // 移除闪烁光标
-        };
+                function readStream() {
+                    return reader.read().then(({ done, value }) => {
+                        if (done) {
+                            aiContentDiv.classList.remove('typing-cursor');
+                            btn.disabled = false;
+                            currentEventSource = null;
+                            return;
+                        }
+                        buffer += decoder.decode(value, { stream: true });
+                        // 按行分割，处理 SSE 格式 data: xxx
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop(); // 保留最后一个不完整的片段
+                        for (const line of lines) {
+                            const trimmed = line.trim();
+                            if (trimmed.startsWith('data:')) {
+                                const content = trimmed.substring(5).trim();
+                                if (content) {
+                                    aiContentDiv.innerHTML += content.replace(/\n/g, '<br>');
+                                    scrollToBottom();
+                                }
+                            } else if (trimmed) {
+                                // 非 SSE 格式的纯文本流，直接追加
+                                aiContentDiv.innerHTML += trimmed.replace(/\n/g, '<br>');
+                                scrollToBottom();
+                            }
+                        }
+                        return readStream();
+                    });
+                }
+                return readStream();
+            })
+            .catch(err => {
+                console.error("❌ 请求失败:", err);
+                aiContentDiv.classList.remove('typing-cursor');
+                aiContentDiv.innerHTML += `<br><span style="color:red;">[请求失败: ${err.message}]</span>`;
+                btn.disabled = false;
+                currentEventSource = null;
+            });
     }
 
     // 辅助方法：追加消息
@@ -138,6 +235,14 @@
         const messagesDiv = document.getElementById('messages');
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
+
+    // 支持回车发送（Shift+Enter 换行）
+    document.getElementById('messageInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMsg();
+        }
+    });
 </script>
 </body>
 </html>
