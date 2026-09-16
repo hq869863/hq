@@ -37,6 +37,7 @@ spec:
       containers:
       - name: business
         image: crpi-uc092ktu9mbv7t37.cn-shenzhen.personal.cr.aliyuncs.com/hq869863/hq:business-1.0.0
+        imagePullPolicy: Always
         ports:
         - containerPort: 8000
 ---
