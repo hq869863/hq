@@ -3,7 +3,7 @@ server:
 
 spring:
   application:
-    name: RAG
+    name: rag
 
   # 1. Redis 配置（既做消息队列，又做向量数据库）
   data:
@@ -14,7 +14,7 @@ spring:
       password: 123456
       database: 0
 
-  # 2. Spring AI 向量数据库配置 (以 Redis 为例)
+  # 2. Spring AI 向量数据库配置
   ai:
     # 1. 配置 Embedding 模型
     dashscope:

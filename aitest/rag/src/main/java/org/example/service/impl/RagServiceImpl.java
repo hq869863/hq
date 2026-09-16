@@ -62,7 +62,7 @@ public class RagServiceImpl implements RagService {
         // 构建检索请求
         SearchRequest request = SearchRequest.builder()
                 .query(userQuery)
-                .topK(3) // 只返回最相关的 3 个结果
+                .topK(3)
                 .build();
 
         return vectorStore.similaritySearch(request);

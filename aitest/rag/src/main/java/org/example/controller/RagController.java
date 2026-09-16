@@ -16,7 +16,6 @@ public class RagController {
 
     private final RagService ragService;
 
-    // 相比注解注入，安全性（防止被意外修改）纯粹性（不依赖 Spring 框架）
     public RagController(RagService ragService) {
         this.ragService = ragService;
     }
