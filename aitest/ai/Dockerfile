@@ -11,4 +11,4 @@ COPY target/ai-1.0-SNAPSHOT.jar app.jar
 EXPOSE 8001
 
 # 5. 启动命令
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Djava.net.preferIPv4Stack=true", "-jar", "app.jar"]
