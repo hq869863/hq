@@ -17,7 +17,7 @@ public class WebClientConfig {
     @Bean("aiWebClient")
     public WebClient aiWebClient() {
         return WebClient.builder()
-                .baseUrl("http://ai-deployment:8008")
+                .baseUrl("http://ai-deployment:8001")
                 .exchangeStrategies(ExchangeStrategies.builder()
                         .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024))
                         .build())
