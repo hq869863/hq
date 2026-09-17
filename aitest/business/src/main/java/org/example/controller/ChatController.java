@@ -23,13 +23,14 @@ public class ChatController {
      * 对话接口（透传给 ai 模块）
      */
     @PostMapping(value = "/graph/{chatId}")
-    public String chatFlux(@RequestBody String userInput, @PathVariable("chatId") String chatId) {
+    public String chat(@RequestBody String userInput, @PathVariable("chatId") String chatId) {
         return aiWebClient.post()
                 .uri("/graph/{chatId}", chatId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(userInput)
                 .retrieve()
-                .toString();
+                .bodyToMono(String.class)
+                .block();
     }
 
     @GetMapping(value = "/test/{chatId}")
