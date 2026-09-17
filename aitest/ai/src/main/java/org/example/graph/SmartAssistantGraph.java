@@ -1,22 +1,20 @@
 package org.example.graph;
 
+import com.alibaba.cloud.ai.graph.CompileConfig;
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.alibaba.cloud.ai.graph.KeyStrategyFactory;
 import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
-import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
+import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
+import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.alibaba.cloud.ai.graph.StateGraph.START;
@@ -121,10 +119,10 @@ public class SmartAssistantGraph {
             String input = state.value("input", String.class).orElse("");
 
             String prompt = """
-                你是一个热情可爱的聊天助手。请用轻松活泼的语气回复用户，回复中要包含表情符号(emoji)和颜文字。
-                用户说：%s
-                请直接回复内容，不要加其他说明。
-                """.formatted(input);
+                    你是一个热情可爱的聊天助手。请用轻松活泼的语气回复用户，回复中必须包含表情符号(emoji)和颜文字。
+                    用户说：%s
+                    请直接回复内容，不要加其他说明。
+                    """.formatted(input);
 
             String reply = chatClient.prompt(prompt).call().content();
             return Map.of("output", reply);
@@ -205,6 +203,11 @@ public class SmartAssistantGraph {
     @Bean
     public CompiledGraph compiledGraph() throws Exception {
         StateGraph graph = new StateGraph(keyStrategyFactory());
+        // MemorySaver（开发环境）或 RedisSaver（生产环境）
+        MemorySaver checkpointer = new MemorySaver();
+        SaverConfig saverConfig = SaverConfig.builder()
+                .register(checkpointer)
+                .build();
 
         // 添加节点
         graph.addNode("safetyCheck", node_async(safetyCheckNode()));
@@ -248,6 +251,8 @@ public class SmartAssistantGraph {
 
         graph.addEdge("outputSafety", END);
 
-        return graph.compile();
+        return graph.compile(CompileConfig.builder()
+                .saverConfig(saverConfig)
+                .build());
     }
 }
