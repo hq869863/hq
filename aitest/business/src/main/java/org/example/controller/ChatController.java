@@ -4,10 +4,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
@@ -25,7 +22,7 @@ public class ChatController {
     /**
      * 对话接口（透传给 ai 模块）
      */
-    @PostMapping(value = "/graph/{chatId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/graph/{chatId}")
     public String chatFlux(@RequestBody String userInput, @PathVariable("chatId") String chatId) {
         return aiWebClient.post()
                 .uri("/graph/{chatId}", chatId)
@@ -33,5 +30,10 @@ public class ChatController {
                 .bodyValue(userInput)
                 .retrieve()
                 .toString();
+    }
+
+    @GetMapping(value = "/test/{chatId}")
+    public String test(@PathVariable("chatId") String chatId) {
+        return "yes !" + chatId;
     }
 }
