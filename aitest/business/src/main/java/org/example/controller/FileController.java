@@ -1,7 +1,7 @@
 package org.example.controller;
 
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -19,9 +19,9 @@ public class FileController {
     /**
      * 流式对话接口（透传给 ai 模块）
      */
-    @PostMapping(value = "/load")
+    @GetMapping(value = "/load")
     public String chatFlux() {
-        return ragWebClient.post()
+        return ragWebClient.get()
                 .uri("/load")
                 .retrieve()
                 .bodyToMono(String.class)
