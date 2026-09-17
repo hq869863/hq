@@ -58,7 +58,7 @@ public class SmartAssistantGraph {
     public NodeAction safetyCheckNode() {
         return state -> {
             String input = state.value("input", "").toString();
-            List<String> badWords = List.of("色情", "暴力", "赌博", "毒品");
+            List<String> badWords = List.of("色情", "暴力");
             boolean safe = badWords.stream().noneMatch(input::contains);
             log.info("安全检查: input={}, safe={}", input, safe);
 
@@ -185,7 +185,7 @@ public class SmartAssistantGraph {
     public NodeAction outputSafetyNode() {
         return state -> {
             String output = state.value("output", "").toString();
-            List<String> badWords = List.of("色情", "暴力");
+            List<String> badWords = List.of("色情", "暴力", "赌博", "毒品");
 
             String maskedOutput = output;
             for (String word : badWords) {
