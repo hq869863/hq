@@ -7,14 +7,24 @@ import com.alibaba.cloud.ai.graph.StateGraph;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
 import com.alibaba.cloud.ai.graph.checkpoint.config.SaverConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
+import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.alibaba.cloud.ai.graph.StateGraph.END;
 import static com.alibaba.cloud.ai.graph.StateGraph.START;
@@ -29,9 +39,11 @@ import static com.alibaba.cloud.ai.graph.action.AsyncNodeAction.node_async;
 public class SmartAssistantGraph {
 
     private final ChatClient chatClient;
+    private final VectorStore vectorStore;
 
-    public SmartAssistantGraph(ChatClient.Builder builder) {
+    public SmartAssistantGraph(ChatClient.Builder builder, VectorStore vectorStore) {
         this.chatClient = builder.build();
+        this.vectorStore = vectorStore;
     }
 
     // ==================== 状态策略 ====================
@@ -44,7 +56,8 @@ public class SmartAssistantGraph {
                 "output", new ReplaceStrategy(),
                 "persona", new ReplaceStrategy(),
                 "safe", new ReplaceStrategy(),
-                "toolResult", new ReplaceStrategy()
+                "ragContext", new ReplaceStrategy(),
+                "messages", new AppendStrategy()
         );
     }
 
@@ -134,7 +147,7 @@ public class SmartAssistantGraph {
      */
     @Bean
     public NodeAction privateNode() {
-        return state -> Map.of("output", "我是一个AI助手，没有个人隐私信息哦。");
+        return state -> Map.of("output", "我是一个AI助手，没有个人隐私信息哦。如果你想聊天或问问题，我很乐意帮忙！");
     }
 
     /**
@@ -160,6 +173,85 @@ public class SmartAssistantGraph {
     }
 
     /**
+     * RAG 检索节点
+     */
+    @Bean
+    public NodeAction ragNode() {
+        return state -> {
+            String input = state.value("input", "").toString();
+            log.info("RAG检索: query={}", input);
+
+            List<Document> docs = vectorStore.similaritySearch(
+                    SearchRequest.builder()
+                            .query(input)
+                            .topK(5) //  只取最相关的 3 条
+                            .similarityThreshold(0.7) // ← 过滤低相关度
+                            .build()
+            );
+
+            if (docs.isEmpty()) {
+                log.info("RAG检索: 未找到相关文档");
+                return Map.of("ragContext", "");
+            }
+
+            String context = docs.stream()
+                    .map(doc -> doc.getText())
+                    .collect(Collectors.joining("\n\n"));
+
+            log.info("RAG检索: 找到{}条相关文档", docs.size());
+            return Map.of("ragContext", context);
+        };
+    }
+
+    /**
+     * 历史记忆
+     */
+    @Bean
+    public NodeAction memoryNode() {
+        return state -> {
+            String input = state.value("input", "").toString();
+
+            // 从 state 读取历史消息
+            @SuppressWarnings("unchecked")
+            List<Message> messages = (List<Message>) state.value("messages").orElse(List.of());
+            List<Message> result;
+            if (messages.size() <= 10) {
+                // 消息不多，直接保留 + 追加当前
+                result = new ArrayList<>(messages);
+            } else {
+                // 消息太多，用 LLM 压缩旧消息为摘要
+                List<Message> recentMessages = messages.subList(messages.size() - 8, messages.size());
+                List<Message> oldMessages = messages.subList(1, messages.size() - 8); // 跳过首条 SystemMessage
+
+                // 把旧消息拼成文本，让 LLM 生成摘要
+                String oldText = oldMessages.stream()
+                        .map(m -> (m instanceof UserMessage ? "用户" : "助手") + ": " + m.getText())
+                        .collect(Collectors.joining("\n"));
+
+                String summaryPrompt = """
+                        请将以下对话历史压缩成一段简洁的摘要，保留关键事实和用户偏好，不超过100字：
+                        %s
+                        直接返回摘要文本，不要加其他说明。
+                        """.formatted(oldText);
+
+                String summary = chatClient.prompt(summaryPrompt).call().content();
+                log.info("历史记忆: 压缩{}条旧消息为摘要", oldMessages.size());
+
+                result = new ArrayList<>();
+                result.add(messages.get(0)); // 保留首条 SystemMessage
+                result.add(new SystemMessage("## 之前对话摘要:\n" + summary)); // 插入摘要
+                result.addAll(recentMessages); // 最近 8 条原文
+            }
+
+            // 追加当前轮用户消息
+            result.add(new UserMessage(input));
+
+            log.info("历史记忆: 最终{}条消息", result.size());
+            return Map.of("messages", result);
+        };
+    }
+
+    /**
      * 通用问答
      */
     @Bean
@@ -167,14 +259,45 @@ public class SmartAssistantGraph {
         return state -> {
             String input = state.value("input", "").toString();
             String persona = state.value("persona", "你是一个乐于助人的AI助手。").toString();
+            String ragContext = state.value("ragContext", "").toString();
 
-            StringBuilder prompt = new StringBuilder();
-            prompt.append("人设: ").append(persona).append("\n");
-            prompt.append("用户问题: ").append(input).append("\n");
-            prompt.append("请回答:");
+            @SuppressWarnings("unchecked")
+            List<Message> messages = (List<Message>) state.value("messages").orElse(List.of());
 
-            String answer = chatClient.prompt(prompt.toString()).call().content();
-            return Map.of("output", answer);
+            StringBuilder systemContent = new StringBuilder(persona);
+            if (!ragContext.isEmpty()) {
+                systemContent.append("\n\n【参考知识】\n").append(ragContext);
+                systemContent.append("\n\n请优先基于上述参考知识回答。如果知识与用户历史对话冲突，以参考知识为准。");
+            }
+            systemContent.append("\n\n如果参考知识中没有相关信息，请明确告知用户你不知道，不要编造答案。");
+
+            // 2. 分层构建消息列表
+            List<Message> allMessages = new ArrayList<>();
+
+            // 第一层：SystemMessage（人设 + RAG）
+            allMessages.add(new SystemMessage(systemContent.toString()));
+
+            // 第二层：历史对话（只保留 UserMessage 和 AssistantMessage，跳过中间的摘要 SystemMessage）
+            for (Message msg : messages) {
+                if (msg instanceof UserMessage || msg instanceof AssistantMessage) {
+                    allMessages.add(msg);
+                }
+                // 摘要 SystemMessage 的内容已经融入上一层的 systemContent，这里不再重复添加
+            }
+
+            // 第三层：当前轮用户问题（单独作为最后一条 UserMessage，明确"这是本轮要回答的"）
+            allMessages.add(new UserMessage(input));
+
+            String answer = chatClient.prompt()
+                    .messages(allMessages)
+                    .call()
+                    .content();
+
+            log.info("QA回答: {}", answer);
+            return Map.of(
+                    "output", answer,
+                    "messages", List.of(new AssistantMessage(answer))
+            );
         };
     }
 
@@ -215,6 +338,8 @@ public class SmartAssistantGraph {
         graph.addNode("chat", node_async(chatNode()));
         graph.addNode("private", node_async(privateNode()));
         graph.addNode("persona", node_async(personaNode()));
+        graph.addNode("rag", node_async(ragNode()));
+        graph.addNode("memory", node_async(memoryNode()));
         graph.addNode("qa", node_async(qaNode()));
         graph.addNode("outputSafety", node_async(outputSafetyNode()));
 
@@ -240,15 +365,16 @@ public class SmartAssistantGraph {
                         "chat", "chat",
                         "private", "private",
                         "persona", "persona",
-                        "qa", "qa"
+                        "qa", "rag"
                 )
         );
 
         graph.addEdge("chat", "outputSafety");
         graph.addEdge("private", "outputSafety");
         graph.addEdge("persona", "outputSafety");
+        graph.addEdge("rag", "memory");
+        graph.addEdge("memory", "qa");
         graph.addEdge("qa", "outputSafety");
-
         graph.addEdge("outputSafety", END);
 
         return graph.compile(CompileConfig.builder()
