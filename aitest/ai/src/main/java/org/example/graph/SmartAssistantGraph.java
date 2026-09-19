@@ -11,6 +11,7 @@ import com.alibaba.cloud.ai.graph.state.strategy.AppendStrategy;
 import com.alibaba.cloud.ai.graph.state.strategy.ReplaceStrategy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -40,10 +41,12 @@ public class SmartAssistantGraph {
 
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
+    QuestionAnswerAdvisor ragAdvisor;
 
-    public SmartAssistantGraph(ChatClient.Builder builder, VectorStore vectorStore) {
+    public SmartAssistantGraph(ChatClient.Builder builder, VectorStore vectorStore, QuestionAnswerAdvisor ragAdvisor) {
         this.chatClient = builder.build();
         this.vectorStore = vectorStore;
+        this.ragAdvisor = ragAdvisor;
     }
 
     // ==================== 状态策略 ====================
@@ -137,7 +140,7 @@ public class SmartAssistantGraph {
                     请直接回复内容，不要加其他说明。
                     """.formatted(input);
 
-            String reply = chatClient.prompt(prompt).call().content();
+            String reply = chatClient.prompt(prompt).advisors(ragAdvisor).call().content();
             return Map.of("output", reply);
         };
     }
@@ -285,9 +288,10 @@ public class SmartAssistantGraph {
 
             String answer = chatClient.prompt()
                     .messages(allMessages)
+                    .advisors(ragAdvisor)
                     .call()
                     .content();
-
+            log.info("qaNode: ragContext长度={}, 内容={}", ragContext.length(), ragContext);
             log.info("QA回答: {}", answer);
             return Map.of(
                     "output", answer,
