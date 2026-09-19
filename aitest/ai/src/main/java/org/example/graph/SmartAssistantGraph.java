@@ -209,8 +209,6 @@ public class SmartAssistantGraph {
     @Bean
     public NodeAction memoryNode() {
         return state -> {
-            String input = state.value("input", "").toString();
-
             // 从 state 读取历史消息
             @SuppressWarnings("unchecked")
             List<Message> messages = (List<Message>) state.value("messages").orElse(List.of());
@@ -242,9 +240,6 @@ public class SmartAssistantGraph {
                 result.add(new SystemMessage("## 之前对话摘要:\n" + summary)); // 插入摘要
                 result.addAll(recentMessages); // 最近 8 条原文
             }
-
-            // 追加当前轮用户消息
-            result.add(new UserMessage(input));
 
             log.info("历史记忆: 最终{}条消息", result.size());
             return Map.of("messages", result);
@@ -362,21 +357,27 @@ public class SmartAssistantGraph {
         graph.addConditionalEdges("intent",
                 edge_async(state -> state.value("intent", "qa").toString()),
                 Map.of(
-                        "chat", "chat",
+                        "chat", "rag",
                         "private", "private",
                         "persona", "persona",
                         "qa", "rag"
                 )
         );
 
-        graph.addEdge("chat", "outputSafety");
         graph.addEdge("private", "outputSafety");
         graph.addEdge("persona", "outputSafety");
         graph.addEdge("rag", "memory");
-        graph.addEdge("memory", "qa");
         graph.addEdge("qa", "outputSafety");
+        graph.addEdge("chat", "outputSafety");
         graph.addEdge("outputSafety", END);
 
+        graph.addConditionalEdges("memory",
+                edge_async(state -> state.value("intent", "qa").toString()),
+                Map.of(
+                        "chat", "chat",
+                        "qa", "qa"
+                )
+        );
         return graph.compile(CompileConfig.builder()
                 .saverConfig(saverConfig)
                 .build());
