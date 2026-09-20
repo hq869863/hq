@@ -1,31 +1,31 @@
 package org.example.controller;
 
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 /**
  * @author hq
  */
 @RestController
 public class FileController {
-    private final WebClient aiWebClient;
+    private final WebClient ragWebClient;
 
-    public FileController(WebClient aiWebClient) {
-        this.aiWebClient = aiWebClient;
+    public FileController(@Qualifier("ragWebClient") WebClient ragWebClient) {
+        this.ragWebClient = ragWebClient;
     }
 
     /**
      * 流式对话接口（透传给 ai 模块）
      */
-    @PostMapping(value = "/load")
-    public Flux<String> chatFlux(@RequestParam String path) {
-        return aiWebClient.post()
-                .uri("/load?path={path}", path)
+    @GetMapping(value = "/load")
+    public String chatFlux() {
+        return ragWebClient.get()
+                .uri("/load")
                 .retrieve()
-                .bodyToFlux(String.class);
+                .bodyToMono(String.class)
+                .block();
     }
 
 }

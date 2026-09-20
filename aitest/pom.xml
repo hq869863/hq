@@ -13,7 +13,7 @@
     <modules>
         <module>business</module>
         <module>ai</module>
-        <module>RAG</module>
+        <module>rag</module>
         <module>mytest</module>
     </modules>
 

@@ -1,13 +1,12 @@
 package org.example.controller;
 
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 
 /**
  * @author hq
@@ -16,35 +15,26 @@ import reactor.core.publisher.Mono;
 public class ChatController {
     private final WebClient aiWebClient;
 
-    public ChatController(WebClient aiWebClient) {
+    public ChatController(@Qualifier("aiWebClient") WebClient aiWebClient) {
         this.aiWebClient = aiWebClient;
     }
 
     /**
-     * 流式对话接口（透传给 ai 模块）
+     * 对话接口（透传给 ai 模块）
      */
-    @PostMapping(value = "/flux/{modelType}/{chatId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chatFlux(@PathVariable("modelType") Integer modelType,
-                                 @PathVariable("chatId") String chatId,
-                                 @RequestBody String userQuery) {
+    @PostMapping(value = "/graph/{chatId}")
+    public String chat(@RequestBody String userInput, @PathVariable("chatId") String chatId) {
         return aiWebClient.post()
-                .uri("/chat/flux/{modelType}/{chatId}", modelType, chatId)
-                .bodyValue(userQuery)
+                .uri("/graph/{chatId}", chatId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(userInput)
                 .retrieve()
-                .bodyToFlux(String.class);
+                .bodyToMono(String.class)
+                .block();
     }
 
-    /**
-     * 普通对话接口（透传给 ai 模块）
-     */
-    @PostMapping("/sync/{modelType}/{chatId}")
-    public Mono<String> chat(@PathVariable("modelType") Integer modelType,
-                             @PathVariable("chatId") String chatId,
-                             @RequestBody String userQuery) {
-        return aiWebClient.post()
-                .uri("/chat/{modelType}/{chatId}", modelType, chatId)
-                .bodyValue(userQuery)
-                .retrieve()
-                .bodyToMono(String.class);
+    @GetMapping(value = "/test/{chatId}")
+    public String test(@PathVariable("chatId") String chatId) {
+        return "yes !" + chatId;
     }
 }
