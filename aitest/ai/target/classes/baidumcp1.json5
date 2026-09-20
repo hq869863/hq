@@ -1,0 +1,50 @@
+{
+  "mcpServers": {
+    "baidu-map": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "baidu-map-mcp",
+        "mcp-server-baidu-map"
+      ]
+    },
+    "gitlab": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "gitlab-mcp",
+        "mcp-server-gitlab"
+      ]
+    }
+  }
+}
+
+//{
+//  "mcpServers": {
+//    "baidu-map": {
+//      "command": "docker",
+//      "args": [
+//        "exec",
+//        "-i",
+//        "baidu-map-mcp",
+//        "mcp-server-baidu-map"
+//      ]
+//    }
+//  }
+//}
+
+//{
+//  "mcpServers": {
+//    "baidu-map": {
+//      "command": "docker",
+//      "args": [
+//        "exec",
+//        "-i",
+//        "aitest-baidu-map-mcp-1",
+//        "mcp-server-baidu-map"
+//      ]
+//    }
+//  }
+//}

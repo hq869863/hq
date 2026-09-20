@@ -1,6 +1,7 @@
 package org.example.controller;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
+import com.alibaba.cloud.ai.graph.RunnableConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,14 +25,13 @@ public class GarphController {
 
     @PostMapping("/graph/{chatId}")
     public String runGraph(@RequestBody String userInput, @PathVariable("chatId") String chatId) throws Exception {
-        // 传入初始状态
-        Map<String, Object> inputs = Map.of("user_input", userInput,
-                                            "thread_id", chatId);
 
-        // 执行 Graph
-        var result = weatherGraph.invoke(inputs);
-
-        // 获取最终状态中的结果（根据实际 State 结构调整 key）
-        return result.toString();
+        RunnableConfig config = RunnableConfig.builder()
+                .threadId(chatId)
+                .build();
+        var result = weatherGraph.invoke(Map.of("input", userInput), config);
+        return result
+                .map(state -> state.value("output", String.class).orElse("抱歉，服务暂时不可用"))
+                .orElse("抱歉，服务暂时不可用");
     }
 }
